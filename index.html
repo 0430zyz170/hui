@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>听禹回响 - 电影感养成游戏</title>
+    <style>
+        /* ===== 全局样式 ===== */
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d110d; /* 极暗墨绿背景 */
+            color: #d4e0d4;
+            font-family: "Microsoft YaHei", "PingFang SC", "STZhongsong", serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            padding: 12px 0; /* 让手机上下留一点呼吸感 */
+        }
+
+        /* ===== 开头电影胶卷动画 ===== */
+        #intro-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #0b0e0b;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            transition: opacity 2s ease-in-out, visibility 2s;
+        }
+        #intro-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* 电影胶片边框 */
+        .film-strip {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 80px;
+            background-color: #131813;
+            background-image: 
+                repeating-linear-gradient(0deg, transparent, transparent 20px, #2a3b2a 20px, #2a3b2a 40px);
+            border-left: 2px solid #1a231a;
+            border-right: 2px solid #1a231a;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+        .film-strip.left { left: 0; }
+        .film-strip.right { right: 0; }
+
+        /* 胶卷中心内容 */
+        .intro-content {
+            text-align: center;
+            animation: introZoom 6s ease-out forwards;
+        }
+        .intro-title {
+            font-size: 4rem;
+            color: #7faa7f; /* 高级灰绿色 */
+            letter-spacing: 15px;
+            margin: 0;
+            text-shadow: 0 0 30px rgba(127, 170, 127, 0.4);
+            font-weight: 300;
+            opacity: 0;
+            animation: fadeInText 3s ease 1s forwards;
+        }
+        .intro-subtitle {
+            font-size: 1rem;
+            color: #4a634a;
+            letter-spacing: 8px;
+            margin-top: 20px;
+            opacity: 0;
+            animation: fadeInText 3s ease 3s forwards;
+        }
+
+        /* 光影扫过效果 */
+        .light-sweep {
+            position: absolute;
+            top: 0; left: -100%;
+            width: 50%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(127, 170, 127, 0.05), transparent);
+            transform: skewX(-20deg);
+            animation: sweep 4s ease-in-out 2s forwards;
+        }
+
+        @keyframes introZoom {
+            0% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        @keyframes fadeInText {
+            0% { opacity: 0; transform: translateY(15px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes sweep {
+            0% { left: -100%; }
+            100% { left: 200%; }
+        }
+
+        /* ===== 主游戏容器 ===== */
+        #game-container {
+            width: 100%;
+            max-width: 430px; /* 手机屏幕宽度 */
+            height: min(94vh, 880px); /* 固定屏幕高度，内容向下滑动 */
+            background: linear-gradient(135deg, #161b16, #0f130f);
+            border-radius: 26px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 0 1px #2a3b2a;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+            display: none; /* 开场动画结束后显示 */
+            scrollbar-width: thin;
+            scrollbar-color: #2a3b2a transparent;
+        }
+        #game-container::-webkit-scrollbar { width: 4px; }
+        #game-container::-webkit-scrollbar-thumb { background: #2a3b2a; border-radius: 2px; }
+        #game-container.active { display: block; }
+
+        /* ===== 顶部状态栏 ===== */
+        #status-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 25px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-bottom: 1px solid #2a3b2a;
+            font-size: 14px;
+            font-family: "PingFang SC", sans-serif;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #8fa38f;
+        }
+        .stat-bar {
+            width: 60px;
+            height: 4px;
+            background: #1a231a;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .stat-fill {
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease-out;
+        }
+        #stat-warm .stat-fill { background: #cc9c52; }
+        #stat-tough .stat-fill { background: #6b9c9c; }
+        #stat-fans .stat-fill { background: #9c6b6b; }
+
+        /* ===== 存档/读档按钮 ===== */
+        #save-controls {
+            position: absolute;
+            top: 15px;
+            right: 25px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn-save {
+            background: transparent;
+            color: #5c6e5c;
+            border: 1px solid #2a3b2a;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.3s;
+            font-family: inherit;
+        }
+        .btn-save:hover {
+            color: #a4c2a4;
+            border-color: #7faa7f;
+            background: rgba(127, 170, 127, 0.05);
+        }
+
+        /* ===== 主内容区 ===== */
+        #story-area {
+            padding: 40px 60px;
+            min-height: 400px;
+            font-size: 17px;
+            line-height: 2.1;
+            letter-spacing: 0.5px;
+            position: relative;
+            background-image: radial-gradient(circle at center, rgba(127, 170, 127, 0.03) 0%, transparent 70%);
+        }
+
+        #chapter-title {
+            font-size: 20px;
+            color: #7faa7f;
+            margin-bottom: 25px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            border-left: 3px solid #7faa7f;
+            padding-left: 12px;
+        }
+
+        #text-display {
+            white-space: pre-wrap;
+            margin-bottom: 30px;
+            text-align: justify;
+            color: #c0cfc0;
+        }
+
+        /* ===== 交互选项区 ===== */
+        #choices-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .choice-btn {
+            background: rgba(127, 170, 127, 0.03);
+            border: 1px solid #2a3b2a;
+            color: #a4c2a4;
+            padding: 16px 25px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 15px;
+            text-align: left;
+            transition: 0.4s;
+            font-family: inherit;
+            letter-spacing: 1px;
+        }
+        .choice-btn:hover {
+            background: rgba(127, 170, 127, 0.08);
+            border-color: #7faa7f;
+            color: #d4e0d4;
+            transform: translateX(8px);
+            box-shadow: 0 0 15px rgba(127, 170, 127, 0.1);
+        }
+
+        /* ===== 音乐控制 ===== */
+        #music-toggle {
+            position: absolute;
+            bottom: 20px;
+            right: 25px;
+            background: transparent;
+            border: none;
+            color: #5c6e5c;
+            cursor: pointer;
+            font-size: 22px;
+            transition: 0.3s;
+        }
+        #music-toggle:hover { color: #7faa7f; }
+
+        /* ===== 成长相册（图片依尺寸由小到大排列） ===== */
+        #gallery-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            background: rgba(8, 11, 8, 0.97);
+            display: none;
+            flex-direction: column;
+            padding: 30px 40px;
+        }
+        #gallery-overlay.show { display: flex; }
+        .gallery-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            flex-shrink: 0;
+        }
+        .gallery-header h2 {
+            color: #7faa7f;
+            font-weight: 300;
+            letter-spacing: 4px;
+            font-size: 22px;
+            margin: 0;
+        }
+        .gallery-close {
+            background: transparent;
+            border: 1px solid #2a3b2a;
+            color: #8fa38f;
+            border-radius: 4px;
+            padding: 6px 14px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: inherit;
+            transition: 0.3s;
+        }
+        .gallery-close:hover { color: #d4e0d4; border-color: #7faa7f; }
+        #gallery-grid {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 22px;
+            overflow-y: auto;
+            justify-content: center;
+            align-items: flex-end;
+            padding-bottom: 30px;
+        }
+        .photo-card {
+            background: rgba(127, 170, 127, 0.03);
+            border: 1px solid #2a3b2a;
+            border-radius: 6px;
+            padding: 10px;
+            transition: transform 0.4s, box-shadow 0.4s, border-color 0.4s;
+        }
+        .photo-card:hover {
+            transform: translateY(-6px);
+            border-color: #7faa7f;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 18px rgba(127,170,127,0.15);
+        }
+        /* 卡片宽度随排序递增，视觉上直观体现“由小到大” */
+        .photo-card:nth-child(1) { width: clamp(120px, 14vw, 160px); }
+        .photo-card:nth-child(2) { width: clamp(140px, 17vw, 195px); }
+        .photo-card:nth-child(3) { width: clamp(160px, 20vw, 230px); }
+        .photo-card:nth-child(4) { width: clamp(180px, 22vw, 255px); }
+        .photo-card:nth-child(5) { width: clamp(200px, 24vw, 285px); }
+        .photo-wrap {
+            position: relative;
+            overflow: hidden;
+            border-radius: 4px;
+            display: flex;
+        }
+        .photo-wrap img {
+            display: block;
+            width: 100%;
+            height: auto;
+            cursor: zoom-in;
+            filter: saturate(0.92);
+        }
+        .photo-rank {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(11, 14, 11, 0.78);
+            border: 1px solid #4a634a;
+            color: #a4c2a4;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            letter-spacing: 1px;
+        }
+        .photo-info {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #8fa38f;
+        }
+        .photo-tag { color: #a4c2a4; letter-spacing: 2px; white-space: nowrap; }
+
+        /* 点击大图 */
+        #lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 10001;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+        #lightbox.show { display: flex; }
+        #lightbox img {
+            max-width: 92vw;
+            max-height: 88vh;
+            border-radius: 6px;
+            box-shadow: 0 0 60px rgba(127, 170, 127, 0.2);
+        }
+        .lightbox-caption {
+            position: absolute;
+            bottom: 26px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: #a4c2a4;
+            letter-spacing: 3px;
+            font-size: 14px;
+        }
+
+        /* ===== 章节进度条 ===== */
+        #progress-track { height: 3px; background: #1a231a; }
+        #progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4a634a, #7faa7f);
+            transition: width 0.8s ease;
+        }
+
+        /* ===== 打字快进提示 ===== */
+        #type-hint {
+            display: none;
+            text-align: right;
+            font-size: 11px;
+            color: #4a634a;
+            letter-spacing: 2px;
+            margin-top: -14px;
+            margin-bottom: 12px;
+            animation: hintBlink 1.6s infinite;
+        }
+        #type-hint.show { display: block; }
+        @keyframes hintBlink { 0%,100% { opacity: .35; } 50% { opacity: .9; } }
+
+        /* ===== 选项序号键 ===== */
+        .choice-key {
+            display: inline-block;
+            min-width: 20px;
+            height: 20px;
+            line-height: 20px;
+            text-align: center;
+            margin-right: 12px;
+            border: 1px solid #4a634a;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #7faa7f;
+            background: rgba(0,0,0,0.3);
+            vertical-align: 1px;
+        }
+        .choice-btn:active { transform: translateX(8px) scale(0.98); }
+
+        /* ===== 属性浮动反馈 ===== */
+        .stat-float {
+            position: fixed;
+            z-index: 10003;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            pointer-events: none;
+            animation: floatUp 1.5s ease-out forwards;
+        }
+        .stat-float-warm { color: #cc9c52; }
+        .stat-float-tough { color: #6b9c9c; }
+        .stat-float-fans { color: #c98a8a; }
+        @keyframes floatUp {
+            0% { opacity: 0; transform: translateY(0); }
+            15% { opacity: 1; }
+            100% { opacity: 0; transform: translateY(-70px); }
+        }
+        .stat-item.pulse { animation: statPulse .6s ease; }
+        @keyframes statPulse {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.18); }
+            100% { transform: scale(1); }
+        }
+
+        /* ===== 章节配图（页内悬浮照片） ===== */
+        .chapter-photo {
+            float: right;
+            width: 148px;
+            margin: 0 0 16px 22px;
+            background: rgba(127,170,127,0.05);
+            border: 1px solid #2a3b2a;
+            border-radius: 6px;
+            padding: 8px;
+            transform: rotate(2.5deg);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+            cursor: zoom-in;
+            transition: transform .35s, box-shadow .35s, border-color .35s;
+        }
+        .chapter-photo:hover {
+            transform: rotate(0deg) scale(1.04);
+            border-color: #7faa7f;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.65), 0 0 16px rgba(127,170,127,0.18);
+        }
+        .chapter-photo img { display: block; width: 100%; border-radius: 4px; filter: saturate(0.92); }
+        .chapter-photo-cap { margin-top: 6px; font-size: 11px; color: #8fa38f; letter-spacing: 2px; text-align: center; }
+        #chapter-photo-wrap:empty { display: none; }
+
+        /* ===== 18岁 · 红色腕带黑屏手表倒计时 ===== */
+        #watch-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10002;
+            background: rgba(5, 8, 5, 0.94);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 26px;
+        }
+        #watch-overlay.show { display: flex; }
+        .watch { display: flex; flex-direction: column; align-items: center; animation: watchIn .9s ease; }
+        @keyframes watchIn { 0% { opacity: 0; transform: translateY(30px) scale(.9); } 100% { opacity: 1; transform: none; } }
+        .watch-strap {
+            width: 92px;
+            height: 74px;
+            background-image:
+                repeating-linear-gradient(0deg, transparent, transparent 14px, rgba(0,0,0,0.28) 14px, rgba(0,0,0,0.28) 17px),
+                linear-gradient(90deg, #8f1d12 0%, #d63a2f 18%, #e2483a 50%, #d63a2f 82%, #8f1d12 100%);
+            box-shadow: inset 3px 0 6px rgba(0,0,0,0.45), inset -3px 0 6px rgba(0,0,0,0.45);
+        }
+        .watch-strap.top { border-radius: 14px 14px 0 0; }
+        .watch-strap.bottom { border-radius: 0 0 14px 14px; }
+        .watch-face {
+            width: 208px;
+            height: 208px;
+            border-radius: 50%;
+            background: #161616;
+            border: 9px solid #262626;
+            box-shadow: 0 0 0 3px #3a3a3a, 0 24px 70px rgba(0,0,0,0.85), inset 0 0 24px rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: -8px 0;
+            position: relative;
+            z-index: 2;
+        }
+        .watch-screen {
+            width: 158px;
+            height: 96px;
+            background: #000;
+            border-radius: 12px;
+            border: 2px solid #1d1d1d;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 0 26px rgba(255, 59, 48, 0.12);
+        }
+        .watch-label { font-size: 9px; color: #8a322b; letter-spacing: 3px; margin-bottom: 6px; font-family: "Courier New", monospace; }
+        #watch-digits {
+            font-family: "Courier New", monospace;
+            font-size: 34px;
+            font-weight: bold;
+            color: #ff3b30;
+            text-shadow: 0 0 14px rgba(255, 59, 48, 0.85);
+            letter-spacing: 2px;
+        }
+        .watch-hr { margin-top: 6px; font-size: 10px; color: #a03a32; font-family: "Courier New", monospace; }
+        .watch-hr b { color: #ff3b30; animation: heartbeat .8s infinite; display: inline-block; }
+        @keyframes heartbeat { 0%,100% { transform: scale(1); } 25% { transform: scale(1.35); } 45% { transform: scale(1); } }
+        #watch-msg {
+            min-height: 30px;
+            font-size: 20px;
+            letter-spacing: 6px;
+            color: #ffb3ab;
+            text-shadow: 0 0 18px rgba(255, 59, 48, 0.5);
+            opacity: 0;
+            transition: opacity .6s;
+        }
+        #watch-overlay.watch-done #watch-msg { opacity: 1; }
+        #watch-overlay.watch-done #watch-digits { animation: digitFlash .35s 5 alternate; }
+        #watch-overlay.watch-done .watch { animation: watchShake .6s ease; }
+        @keyframes digitFlash { from { opacity: 1; } to { opacity: 0.25; } }
+        @keyframes watchShake {
+            0%,100% { transform: translateX(0); }
+            20% { transform: translateX(-6px) rotate(-1.5deg); }
+            40% { transform: translateX(6px) rotate(1.5deg); }
+            60% { transform: translateX(-4px); }
+            80% { transform: translateX(4px); }
+        }
+        #watch-skip { position: absolute; bottom: 40px; right: 40px; }
+
+        /* ===== 开场跳过提示 ===== */
+        .intro-skip {
+            position: absolute;
+            bottom: 34px;
+            left: 0; right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: #3a4a3a;
+            letter-spacing: 4px;
+            animation: hintBlink 2s infinite;
+        }
+        #intro-overlay { cursor: pointer; }
+
+        /* ===== 手机端适配 ===== */
+        @media (max-width: 640px) {
+            body { padding: 0; overflow: hidden; }
+            .film-strip { width: 26px; }
+            .intro-title { font-size: 2rem; letter-spacing: 8px; }
+            .intro-subtitle { font-size: 0.8rem; letter-spacing: 4px; }
+            #game-container { border-radius: 0; max-width: 100vw; height: 100vh; }
+            #status-bar { flex-wrap: wrap; gap: 6px 12px; padding: 10px 14px; font-size: 12px; }
+            .stat-bar { width: 42px; }
+            #save-controls {
+                position: static;
+                justify-content: center;
+                gap: 8px;
+                padding: 8px 10px;
+                background: rgba(0,0,0,0.35);
+                border-bottom: 1px solid #2a3b2a;
+            }
+            #story-area { padding: 22px 16px 60px; font-size: 15px; line-height: 1.95; min-height: 300px; }
+            .chapter-photo { float: none; width: 62%; margin: 0 auto 16px; transform: rotate(1.5deg); }
+            .choice-btn { padding: 14px 16px; font-size: 14px; }
+            .choice-key { display: none; }
+            #gallery-overlay { padding: 16px 12px; }
+            #gallery-grid { gap: 14px; }
+            #music-toggle { bottom: 12px; right: 14px; }
+            .watch-face { width: 172px; height: 172px; }
+            .watch-screen { width: 134px; height: 84px; }
+            #watch-digits { font-size: 28px; }
+            .watch-strap { width: 78px; height: 60px; }
+            #watch-skip { bottom: 24px; right: 20px; }
+        }
+
+        /* ===== 动画 ===== */
+        .fade-in {
+            animation: fadeIn 1s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== 开场绿色胶卷动画 ===== -->
+<div id="intro-overlay">
+    <div class="film-strip left"></div>
+    <div class="film-strip right"></div>
+    <div class="light-sweep"></div>
+    <div class="intro-content">
+        <h1 class="intro-title">听禹回响</h1>
+        <p class="intro-subtitle">TEENAGE DREAM · 2007-2026</p>
+    </div>
+    <div class="intro-skip">点 击 进 入 »</div>
+</div>
+
+<!-- ===== 主游戏界面 ===== -->
+<div id="game-container">
+    <!-- 顶部状态栏 -->
+    <div id="status-bar">
+        <div class="stat-item">📅 年龄：<span id="stat-age">0</span></div>
+        <div class="stat-item" id="stat-warm">🔥 温暖：<div class="stat-bar"><div class="stat-fill" id="fill-warm"></div></div><span id="val-warm">0</span></div>
+        <div class="stat-item" id="stat-tough">🛡️ 坚韧：<div class="stat-bar"><div class="stat-fill" id="fill-tough"></div></div><span id="val-tough">0</span></div>
+        <div class="stat-item" id="stat-fans">🌟 粉丝：<div class="stat-bar"><div class="stat-fill" id="fill-fans"></div></div><span id="val-fans">0</span></div>
+    </div>
+
+    <!-- 章节进度条 -->
+    <div id="progress-track"><div id="progress-fill"></div></div>
+
+    <!-- 存档按钮 -->
+    <div id="save-controls">
+        <button class="btn-save" onclick="saveGame()">💾 存档</button>
+        <button class="btn-save" onclick="loadGame()">📂 读档</button>
+        <button class="btn-save" onclick="restartGame()">🔄 重来</button>
+        <button class="btn-save" onclick="openGallery()">📷 相册</button>
+    </div>
+
+    <!-- 故事内容区 -->
+    <div id="story-area">
+        <div id="chapter-title"></div>
+        <div id="chapter-photo-wrap"></div>
+        <div id="text-display"></div>
+        <div id="type-hint">💡 点击文字可快进</div>
+        <div id="choices-area"></div>
+    </div>
+
+    <!-- 音乐按钮 -->
+    <button id="music-toggle" onclick="toggleBGM()">🔇</button>
+</div>
+
+<!-- ===== 成长相册弹层（图片按尺寸由小到大排列） ===== -->
+<div id="gallery-overlay">
+    <div class="gallery-header">
+        <h2>成长相册 · 按年龄从小到大</h2>
+        <button class="gallery-close" onclick="closeGallery()">✕ 关闭</button>
+    </div>
+    <div id="gallery-grid"></div>
+</div>
+
+<!-- ===== 照片大图查看 ===== -->
+<div id="lightbox" onclick="this.classList.remove('show')">
+    <img id="lightbox-img" src="" alt="成长照片">
+    <div class="lightbox-caption" id="lightbox-caption"></div>
+</div>
+
+<!-- ===== 18岁 · 红色腕带黑屏手表倒计时 ===== -->
+<div id="watch-overlay">
+    <div class="watch">
+        <div class="watch-strap top"></div>
+        <div class="watch-face">
+            <div class="watch-screen">
+                <div class="watch-label">COUNTDOWN · TO 18</div>
+                <div id="watch-digits">00:10.0</div>
+                <div class="watch-hr"><b>♥</b> --- BPM</div>
+            </div>
+        </div>
+        <div class="watch-strap bottom"></div>
+    </div>
+    <div id="watch-msg"></div>
+    <button id="watch-skip" class="btn-save">跳过 ⏩</button>
+</div>
+
+<script>
+/* ==========================================================
+   《听禹回响》 游戏逻辑核心 - 完整版
+   ========================================================== */
+
+// 1. 游戏全局状态
+const gameState = {
+    age: 0,
+    stats: { warm: 0, tough: 0, fans: 0 },
+    currentChapter: 0,
+    watchShown: false,
+    bgmPlaying: false
+};
+
+// 2. 剧本数据 (完整扩充版)
+const storyScript = [
+    // --- 回响0 ---
+    {
+        title: "【回响0：诞生】",
+        text: `2007年的4月30日，哈尔滨的春风里还带着一丝微凉。\n\n医院里，一个小婴儿呱呱坠地。他还不知道自己的未来轨迹，只是睁着朦胧的眼睛，看着抱着自己的阿姨和门外的爸爸。\n\n“大禹、大禹……”爸爸妈妈温柔地呼唤着。\n小小的他愣住了，好奇地想着：他们叫的是谁呢？\n\n这是一个普通却又注定不凡的开始，命运的齿轮，在这一刻悄然转动。`,
+        choices: [
+            { text: "“哇——”地一声啼哭，向世界大声问好", effect: { warm: 5, tough: 5, fans: 0 }, reply: "洪亮的哭声让产房里的人都笑了，这孩子中气十足。" },
+            { text: "安静地睁着眼，好奇打量这个世界", effect: { warm: 10, tough: 0, fans: 0 }, reply: "他安静得出奇，乌溜溜的眼睛里映着灯光。" },
+            { text: "一把握住爸爸的手指，攥得紧紧的", effect: { warm: 10, tough: 5, fans: 0 }, reply: "爸爸的心瞬间化了：这小手劲儿还不小。" }
+        ]
+    },
+    // --- 回响1 ---
+    {
+        title: "【回响1：满月】",
+        text: `咔嚓，咔嚓。\n\n这是什么声音？闪光灯不停地闪烁，照亮了小小的人儿。\n\n满月那天，他被裹在柔软的襁褓里，怀里抱着的是什么？他其实不知道。只是看着妈妈爸爸一直对着他笑，一直夸“可爱”。\n\n“真的吗？”大禹在心里嘀咕。\n那时候真的很小，小到只能感受到温热的怀抱。\n\n后来他总是怀念，那种可以一直待在爸妈身边，什么都不用想的安心感。`,
+        choices: [
+            { text: "被闪光灯逗得咯咯直笑", effect: { warm: 10, tough: 0, fans: 0 }, reply: "清脆的笑声满屋回荡，谁逗他他都乐。" },
+            { text: "往妈妈温暖的怀里钻了钻", effect: { warm: 15, tough: 0, fans: 0 }, reply: "妈妈的心跳声，是他听过最安心的旋律。" },
+            { text: "一把抓住胸前的长命锁不放", effect: { warm: 5, tough: 5, fans: 0 }, reply: "家人笑着说：这孩子，认准的东西就不撒手。" }
+        ]
+    },
+    // --- 回响2 ---
+    {
+        title: "【回响2：两岁】",
+        text: `两岁，是刚学会走路，也最依赖妈妈的年纪。\n\n他张开胖乎乎的双臂，摇摇晃晃地扑向妈妈。在他小小的世界里，有妈妈在身边，就什么都不怕。\n\n“妈妈！”他喊道。\n\n小时候总觉得无忧无虑，长大之后，却发现要想的事情真的很多。\n\n怀念那时候，耳边总有妈妈温柔的回响。\n如果时光可以倒流，他多想再回到那个无忧无虑的午后。`,
+        choices: [
+            { text: "紧紧抱住妈妈，不想松手", effect: { warm: 15, tough: 0, fans: 0 }, reply: "妈妈的怀抱是全世界最安全的地方，温暖在心底蔓延。" },
+            { text: "好奇地挣脱怀抱，走向门外", effect: { warm: 5, tough: 10, fans: 0 }, reply: "他摇摇晃晃地迈出探索世界的脚步，眼里满是好奇。" },
+            { text: "扶着沙发，坚持自己站起来走", effect: { warm: 0, tough: 15, fans: 0 }, reply: "摔倒了也不哭，拍一拍小手，再来一次。" }
+        ]
+    },
+    // --- 回响3 ---
+    {
+        title: "【回响3：启蒙】",
+        text: `那是他第一次真正接触音乐。\n\n观众只有爸爸妈妈。妈妈坐在台下，眼里满是鼓励；爸爸站在一旁，表情严肃，却带着一丝期待。\n\n“既然学，就要学出个样子！”这是爸爸常说的话。\n慈母与严父，一个给予温柔的托底，一个给予向上的鞭策。\n\n他爱上了吉他，也顺理成章地爱上了唱歌。\n虽然刚开始，他唱歌全凭一副好嗓子，甚至可以说是“吼”。\n\n但他记住了一件事：在这个家里，两个男生，要保护好妈妈。这是属于男子汉的承诺。`,
+        choices: [
+            { text: "面对爸爸的严厉，咬牙默默练习", effect: { warm: 5, tough: 20, fans: 0 }, reply: "严父的爱深沉如山，他明白，只有努力才能不负期望。" },
+            { text: "感到委屈，向妈妈撒娇寻求安慰", effect: { warm: 20, tough: 5, fans: 0 }, reply: "妈妈温柔的鼓励瞬间抚平了所有不安，他重新找回了勇气。" },
+            { text: "拉着爸爸合奏一曲，化严厉为默契", effect: { warm: 10, tough: 10, fans: 0 }, reply: "父子俩的琴声第一次合在了一起，爸爸嘴角悄悄上扬。" }
+        ]
+    },
+    // --- 回响4 ---
+    {
+        title: "【回响4：离乡】",
+        text: `后来，那个星探发现了他。\n\n时代峰峻。从哈尔滨，到遥远而陌生的重庆。\n\n这是他第一次离开家这么远。虽然心里有些忐忑，但更多的是对未知的好奇。他觉得自己是可以的。\n\n每晚给妈妈打的那一通电话，成了他在这座山城里最大的慰藉。\n\n“要干出个样子来！”爸爸的叮嘱像烙印一样刻在脑海里。\n所以，训练再苦，受了委屈，他也只字不提。东北人，就得大大方方的！\n\n他喜欢一句歌词：“嬉皮笑脸面对人生的难”。\n他相信，种子总会生根发芽，长成参天大树，而家人和粉丝，就是背后的阳光和雨水。`,
+        choices: [
+            { text: "每晚电话里报喜不报忧", effect: { warm: 10, tough: 5, fans: 0 }, reply: "“妈，我挺好的，重庆的小面可好吃了。”" },
+            { text: "把想家的心情写进日记本", effect: { warm: 5, tough: 10, fans: 0 }, reply: "日记本越来越厚，思念成了文字的重量。" },
+            { text: "加练到深夜，用汗水填满孤独", effect: { warm: 0, tough: 15, fans: 0 }, reply: "练习室的灯，常常为他亮到最后。" }
+        ]
+    },
+    // --- 回响5 ---
+    {
+        title: "【回响5：暗夜】",
+        text: `独在异乡为异客，每逢佳节倍思亲。\n\n陌生的城市，训练的艰苦，加上水土不服带来的病痛。在最脆弱的时候，他下意识地想找亲人，可电话那头只有遥远的忙音。\n\n孤独和疼痛，让他吃了不少苦头。但慢慢地，他学会了把眼泪咽回肚子里。\n\n那一次，他独自背歌词到凌晨两点，满心以为自己准备得很充分，结果上台却没能唱好。\n那一刻他明白了一个道理：一味地自我感动是没用的，实际的成绩才是检验的唯一标准。\n\n把个人的情绪和舞台剥离开来，是一件极其痛苦的事，但他做到了。\n在被环境紧紧束缚的时候，他已经知道，路该往哪走。`,
+        choices: [
+            { text: "狠狠擦干眼泪，把情绪剥离，重头再来", effect: { warm: 0, tough: 25, fans: 0 }, reply: "理智终于压过了情绪，他褪去了青涩，变得更加沉稳。" },
+            { text: "委屈得不行，拨通了家里的电话", effect: { warm: 20, tough: 0, fans: 0 }, reply: "听到父母的声音，所有的逞强都化成了柔软的泪水。" },
+            { text: "下楼跑上几圈，把委屈跑散在夜风里", effect: { warm: 0, tough: 15, fans: 0 }, reply: "汗水混着泪水流下来，心跳声盖过了一切难过。" }
+        ]
+    },
+    // --- 回响6 ---
+    {
+        title: "【回响6：初舞台】",
+        text: `今天的努力，好像没有白费。\n\n可看到投票屏幕上赫然只有两票时，他的心里还是忍不住咯噔了一下。\n\n面对网络上扑面而来的骂声，他做不到不在意，但也做不到放弃。或许在深夜无人的角落，他也曾偷偷哭过。\n\n可是，尽管粉丝不多，尽管骂声一片，他依然坚定自我。\n\n这股不服输的劲头，就是他身上最良好的品质。\n天亮了，他依然会整理好衣冠，对着镜子里的自己笑一笑。`,
+        choices: [
+            { text: "把“两票”截图存好，当作起点的纪念", effect: { warm: 0, tough: 15, fans: 5 }, reply: "他盯着那个数字看了很久：总有一天，会变成两万票。" },
+            { text: "连夜复盘舞台视频，逐帧找问题", effect: { warm: 0, tough: 15, fans: 0 }, reply: "笔记本上密密麻麻，写满了要改的地方。" },
+            { text: "给仅有的两票粉丝手写感谢卡", effect: { warm: 15, tough: 0, fans: 10 }, reply: "“谢谢你，在我只有两票的时候，就看见了我。”" }
+        ]
+    },
+    // --- 回响7 ---
+    {
+        title: "【回响7：拥护】",
+        text: `慢慢地，粉丝多了起来。\n\n看着台下为他亮起的灯牌，这个小孩激动得有些不知所措。他不敢相信，在这个世界上，竟然会有这么多素不相识的人，愿意毫无保留地爱他。\n\n“被爱”的感觉太好了，好到让他有些害怕失去。\n\n但他很快明白，留住粉丝的唯一方法，就是更加努力，更加真诚。\n\n“谢谢大家陪伴，谢谢大家的爱。”\n他说这话时，眼里泛着真诚的光。真心实意的双向奔赴，是最动人的旋律。`,
+        choices: [
+            { text: "一封封读完粉丝的信，仔细收好", effect: { warm: 15, tough: 0, fans: 5 }, reply: "每一句“加油”，都被他妥帖珍藏。" },
+            { text: "在台上大声念出灯牌上的名字", effect: { warm: 10, tough: 0, fans: 15 }, reply: "台下的尖叫声几乎掀翻屋顶，灯海为他沸腾。" },
+            { text: "把感动咽下去，转身加练到深夜", effect: { warm: 0, tough: 10, fans: 5 }, reply: "被爱不是终点，而是他更努力的理由。" }
+        ]
+    },
+    // --- 回响8 ---
+    {
+        title: "【回响8：成年】",
+        text: `18岁。\n\n看着手表上跳动的倒计时，他忽然有些感叹。\n\n从小小的一团，到现在可以独当一面的大人，这飞速成长的十几年，像是一场呼啸而过的电影。\n\n这条路走得很辛苦，但一切都很值得。\n\n他无比清醒地知道，自己离不开父母的托举，离不开粉丝的偏爱。\n\n对于命运赐予的这一切缘分，他都充满了感激。\n成年了，他不许愿别的，只希望能带着这份爱，走得更远。`,
+        choices: [
+            { text: "给爸妈拨通视频，郑重说一声“谢谢”", effect: { warm: 20, tough: 0, fans: 0 }, reply: "屏幕那头，妈妈红了眼眶，爸爸别过头去偷偷抹泪。" },
+            { text: "对着蜡烛许愿：要唱给更多人听", effect: { warm: 5, tough: 5, fans: 15 }, reply: "烛光映着他的眼睛，愿望在心里扎了根。" },
+            { text: "把18岁的第一分钟，留给怀里的吉他", effect: { warm: 5, tough: 10, fans: 5 }, reply: "琴弦轻响，成年的第一个音符稳稳落下。" }
+        ]
+    },
+    // --- 回响9 ---
+    {
+        title: "【回响9：遗憾与前行】",
+        text: `“声生不息”的名单下来了，没有他。\n\n这是他渴求的机会，也是粉丝朋友们日夜期盼的舞台。他不想放弃，可那一纸不同意的文书，像一盆冷水浇了下来。\n\n身边没有人能安慰他。他想告诉爸爸妈妈，可拿起电话，又怕他们担心。最后只能把所有的苦水往肚子里咽。\n\n那天晚上，他一个人偷偷订了机票，连夜飞回家。空荡荡的房间里，只有他自己知道心里有多难过。那些错失的机会，那些说不出口的委屈，最后都变成了一句“没关系”。\n\n可是，当他打开手机，看到粉丝朋友们为了这件事努力奔走、甚至冲上热搜时，眼泪终于没绷住。\n\n他明白，这世上有人比他更在意他的失落，这就够了。\n\n他暗暗发誓，一定要把这份沉甸甸的爱变成前行的力量。凡是过往，皆为序章。所有的遗憾，都将成为他积蓄力量的土壤。`,
+        choices: [
+            { text: "默默消化委屈，用下一次舞台证明自己", effect: { warm: 5, tough: 25, fans: 5 }, reply: "他把眼泪咽回肚子里，眼里重新燃起了光。" },
+            { text: "把这份遗憾写进歌里，用音乐回应一切", effect: { warm: 15, tough: 10, fans: 10 }, reply: "他在琴弦上找到了宣泄的出口，音乐是最好的语言。" },
+            { text: "给粉丝留言：“别担心，我没事”", effect: { warm: 10, tough: 0, fans: 15 }, reply: "简单的一句话，让无数颗悬着的心落了地。" }
+        ]
+    },
+    // --- 回响10 ---
+    {
+        title: "【回响10：向内求索】",
+        text: `日子在不知疲倦的练习中悄然滑过。\n\n十九岁前后的大禹，早已不是当年那个只会靠嗓子“吼”的小孩了。吉他、合成器、架子鼓、钢琴，甚至连唢呐，他都能在极短的时间里掌握。\n\n外人惊叹他的天赋，只有他自己明白，这些旁人看起来令人惊叹的尝试，其实只是他向内求索的过程。他并不想证明给谁看，而是在这些乐器和旋律里，寻找内心的平静。\n\n他记得自己是哈尔滨走出去的小孩，记得妈妈在台下温柔的目光，也记得那些还没完成的约定。\n\n他慢慢懂得，所有经历，无论好坏，都是种子破土前必须经历的黑暗。\n\n“只要还在舞台上，我就什么都不怕。”\n\n如今的他，已经能很坦然地说出这句话。所有的遗憾与不甘，都在时间里发酵成了创作的养分。他不再是那个被推掉外务后无处宣泄的少年了，而是一个真正把根扎进音乐里的歌手。`,
+        choices: [
+            { text: "试着用唢呐写一段全新的旋律", effect: { warm: 0, tough: 10, fans: 10 }, reply: "民乐与流行撞出火花，他找到了新的表达。" },
+            { text: "回哈尔滨，给爸妈开一场客厅演唱会", effect: { warm: 20, tough: 0, fans: 5 }, reply: "观众只有两个人，却是他唱得最认真的一场。" },
+            { text: "为19岁定下目标：开一场个人专场", effect: { warm: 0, tough: 10, fans: 10 }, reply: "他把目标写在琴盒上，每天练琴前都看一遍。" }
+        ]
+    }
+];
+
+// 3. 内置BGM系统（Web Audio 生成式电影感配乐，无需外部音频文件）
+let audioCtx = null;
+let musicBus = null;       // 音乐总线（干湿声 + 混响）
+let bgmTimer = null;       // 调度器
+let nextBeatTime = 0;
+let schedBar = 0, schedBeat = 0;
+let isBgmPlaying = false;
+
+const BEAT = 0.9;          // 每拍秒数，舒缓速度
+
+// C 大调和弦进行：C - Am - F - G - Em - F - C - G
+const chords = [
+    { root: 130.81, pad: [261.63, 329.63, 392.00] }, // C
+    { root: 110.00, pad: [220.00, 261.63, 329.63] }, // Am
+    { root: 174.61, pad: [174.61, 220.00, 261.63] }, // F
+    { root: 196.00, pad: [196.00, 246.94, 293.66] }, // G
+    { root: 164.81, pad: [164.81, 196.00, 246.94] }, // Em
+    { root: 174.61, pad: [174.61, 220.00, 261.63] }, // F
+    { root: 130.81, pad: [261.63, 329.63, 392.00] }, // C
+    { root: 196.00, pad: [196.00, 246.94, 293.66] }  // G
+];
+
+// 每小节的旋律音符：b=起始拍 f=频率(Hz) d=时长(拍)
+const melody = [
+    [ {b:0.0, f:659.25, d:1}, {b:1.5, f:783.99, d:1.5}, {b:3.0, f:880.00, d:1} ],
+    [ {b:0.0, f:440.00, d:1}, {b:1.0, f:523.25, d:1}, {b:2.0, f:659.25, d:2} ],
+    [ {b:0.0, f:440.00, d:1.5}, {b:2.0, f:392.00, d:0.5}, {b:2.5, f:440.00, d:1.5} ],
+    [ {b:0.0, f:587.33, d:1}, {b:1.0, f:493.88, d:1}, {b:2.0, f:587.33, d:2} ],
+    [ {b:0.0, f:659.25, d:1}, {b:1.5, f:493.88, d:1.5}, {b:3.0, f:392.00, d:1} ],
+    [ {b:0.0, f:523.25, d:1}, {b:1.0, f:440.00, d:1}, {b:2.0, f:523.25, d:2} ],
+    [ {b:0.0, f:659.25, d:1}, {b:1.0, f:783.99, d:1}, {b:2.0, f:659.25, d:1}, {b:3.0, f:587.33, d:1} ],
+    [ {b:0.0, f:587.33, d:2}, {b:2.0, f:392.00, d:2} ]
+];
+
+function initAudioEngine() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // 生成卷积混响（模拟电影感空间）
+    const conv = audioCtx.createConvolver();
+    const rate = audioCtx.sampleRate;
+    const len = rate * 2.8;
+    const buf = audioCtx.createBuffer(2, len, rate);
+    for (let c = 0; c < 2; c++) {
+        const data = buf.getChannelData(c);
+        for (let i = 0; i < len; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+        }
+    }
+    conv.buffer = buf;
+
+    const dry = audioCtx.createGain();
+    dry.gain.value = 0.85;
+    const wet = audioCtx.createGain();
+    wet.gain.value = 0.35;
+
+    musicBus = audioCtx.createGain();
+    musicBus.gain.value = 0.0001;
+    musicBus.connect(dry);
+    dry.connect(audioCtx.destination);
+    musicBus.connect(conv);
+    conv.connect(wet);
+    wet.connect(audioCtx.destination);
+}
+
+// 柔和钢琴音色：正弦基音 + 三角波八度泛音
+function playTone(freq, start, durBeats, volume) {
+    const dur = durBeats * BEAT;
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    const g2 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.value = freq;
+    osc2.type = 'triangle';
+    osc2.frequency.value = freq * 2;
+    g2.gain.value = 0.18;
+    osc1.connect(g);
+    osc2.connect(g2);
+    g2.connect(g);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(volume, start + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    g.connect(musicBus);
+    osc1.start(start);
+    osc2.start(start);
+    osc1.stop(start + dur + 0.1);
+    osc2.stop(start + dur + 0.1);
+}
+
+// 铺底 pad：缓慢起伏的正弦和弦
+function playPad(freqs, start, dur) {
+    freqs.forEach((f, i) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        osc.detune.value = i === 0 ? -4 : 5;
+        g.gain.setValueAtTime(0.0001, start);
+        g.gain.linearRampToValueAtTime(0.022, start + dur * 0.35);
+        g.gain.linearRampToValueAtTime(0.0001, start + dur);
+        osc.connect(g);
+        g.connect(musicBus);
+        osc.start(start);
+        osc.stop(start + dur + 0.1);
+    });
+}
+
+function scheduleBar(bar, time) {
+    const ch = chords[bar];
+    playPad(ch.pad, time, 4 * BEAT);                    // 铺底和弦
+    playTone(ch.root, time, 2, 0.09);                   // 根音
+    playTone(ch.root * 2, time + 2 * BEAT, 1.5, 0.05); // 低音呼应
+    melody[bar].forEach(n => {
+        playTone(n.f, time + n.b * BEAT, n.d, 0.11);    // 旋律
+    });
+}
+
+function startBGM() {
+    initAudioEngine();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (isBgmPlaying) return;
+
+    schedBar = 0;
+    schedBeat = 0;
+    nextBeatTime = audioCtx.currentTime + 0.15;
+    bgmTimer = setInterval(() => {
+        while (nextBeatTime < audioCtx.currentTime + 0.25) {
+            if (schedBeat === 0) scheduleBar(schedBar, nextBeatTime);
+            nextBeatTime += BEAT;
+            schedBeat++;
+            if (schedBeat >= 4) {
+                schedBeat = 0;
+                schedBar = (schedBar + 1) % chords.length;
+            }
+        }
+    }, 80);
+
+    musicBus.gain.cancelScheduledValues(audioCtx.currentTime);
+    musicBus.gain.setValueAtTime(Math.max(musicBus.gain.value, 0.0001), audioCtx.currentTime);
+    musicBus.gain.linearRampToValueAtTime(0.9, audioCtx.currentTime + 2.5);
+    isBgmPlaying = true;
+    updateMusicBtn(true);
+}
+
+function stopBGM() {
+    if (!audioCtx) return;
+    clearInterval(bgmTimer);
+    musicBus.gain.cancelScheduledValues(audioCtx.currentTime);
+    musicBus.gain.setValueAtTime(musicBus.gain.value, audioCtx.currentTime);
+    musicBus.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime + 0.8);
+    isBgmPlaying = false;
+    updateMusicBtn(false);
+}
+
+function updateMusicBtn(playing) {
+    const btn = document.getElementById('music-toggle');
+    if (btn) btn.innerText = playing ? "🎵" : "🔇";
+}
+
+function toggleBGM() {
+    if (isBgmPlaying) stopBGM();
+    else startBGM();
+}
+
+function playSound(type) {
+    // 占位符，防止报错。
+    // 如果有真实的音效文件，可以把下面注释掉的代码打开
+    // const sfx = new Audio(type === 'click' ? 'click.mp3' : 'type.mp3');
+    // sfx.volume = type === 'click' ? 0.3 : 0.05;
+    // sfx.play().catch(()=>{});
+}
+
+// 4. 游戏渲染与流程控制
+const titleEl = document.getElementById('chapter-title');
+const textEl = document.getElementById('text-display');
+const choicesEl = document.getElementById('choices-area');
+let typeWriterTimer = null;
+
+function updateStats() {
+    document.getElementById('stat-age').innerText = gameState.age;
+    document.getElementById('val-warm').innerText = gameState.stats.warm;
+    document.getElementById('val-tough').innerText = gameState.stats.tough;
+    document.getElementById('val-fans').innerText = gameState.stats.fans;
+
+    document.getElementById('fill-warm').style.width = Math.min(gameState.stats.warm, 100) + '%';
+    document.getElementById('fill-tough').style.width = Math.min(gameState.stats.tough, 100) + '%';
+    document.getElementById('fill-fans').style.width = Math.min(gameState.stats.fans, 100) + '%';
+}
+
+// ===== 章节配图映射（按年龄从小到大，覆盖全部11章；无真实照片的章节用AI配图） =====
+const IMG = (p) => 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=' + p + '&image_size=portrait_4_3';
+const chapterPhotos = {
+    0: { src: IMG('newborn%20baby%20boy%20wrapped%20in%20cream%20blanket%20sleeping%20in%20hospital%20bassinet%2C%20soft%20warm%20light%20through%20window%2C%20cinematic%20film%20photography%2C%20muted%20green%20color%20grade%2C%20tender%20atmosphere'), cap: '诞生 · 0岁' },
+    1: { src: 'Screenshot_20261003_121038.jpg', cap: '小小书童 · 1岁' },
+    2: { src: 'Screenshot_20261003_120639.jpg', cap: '伸手抱世界 · 2岁' },
+    3: { src: IMG('eight%20year%20old%20Chinese%20boy%20practicing%20acoustic%20guitar%20on%20sofa%20at%20home%2C%20mother%20smiling%20nearby%2C%20warm%20lamp%20glow%2C%20nostalgic%20film%20photo%2C%20cozy%20living%20room'), cap: '吉他启蒙 · 8岁' },
+    4: { src: 'Screenshot_20261003_121055.jpg', cap: '白衣少年 · 离乡14岁' },
+    5: { src: IMG('teenage%20boy%20practicing%20dance%20alone%20at%202am%20in%20dark%20mirrored%20studio%2C%20single%20cold%20overhead%20light%2C%20lonely%20cinematic%20mood%2C%20muted%20green%20tones'), cap: '深夜练习室 · 16岁' },
+    6: { src: IMG('young%20male%20singer%20standing%20on%20small%20talent%20show%20stage%20under%20harsh%20spotlight%2C%20large%20voting%20screen%20glowing%20number%202%20behind%20him%2C%20dramatic%20contrast%20cinematic%20film%20still'), cap: '初舞台 · 17岁' },
+    7: { src: IMG('young%20singer%20on%20stage%20moved%20to%20tears%20looking%20at%20audience%20holding%20glowing%20green%20light%20signs%2C%20sea%20of%20lightsticks%2C%20warm%20emotional%20concert%20atmosphere%2C%20cinematic%20film%20photography'), cap: '灯海拥护 · 17岁' },
+    8: { src: 'Screenshot_20261003_122222.jpg', cap: '气球与王冠 · 成年18岁' },
+    9: { src: IMG('teenage%20boy%20sitting%20alone%20in%20empty%20airport%20at%20night%2C%20face%20lit%20by%20phone%20screen%2C%20rain%20streaks%20on%20glass%20window%2C%20melancholic%20cinematic%20photography%2C%20teal%20green%20grade'), cap: '深夜归途 · 18岁' },
+    10: { src: 'Screenshot_20261003_122014.jpg', cap: '捧花而立 · 19岁' },
+};
+
+function renderChapterPhoto(idx) {
+    const wrap = document.getElementById('chapter-photo-wrap');
+    const p = chapterPhotos[idx];
+    if (!p) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = `
+        <div class="chapter-photo">
+            <img src="${p.src}" alt="${p.cap}" loading="lazy">
+            <div class="chapter-photo-cap">${p.cap}</div>
+        </div>`;
+    const img = wrap.querySelector('img');
+    if (img) {
+        img.onclick = () => showLightbox(p.src, p.cap);
+        img.onerror = () => { wrap.innerHTML = ''; }; // 图片加载失败则不留空框
+    }
+}
+
+// ===== 属性浮动反馈 =====
+function spawnStatFloats(targetBtn, effect) {
+    const rect = targetBtn.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top;
+    const icons = { warm: '🔥+', tough: '🛡️+', fans: '🌟+' };
+    const names = { warm: 'warm', tough: 'tough', fans: 'fans' };
+    let offset = 0;
+    Object.entries(effect).forEach(([k, v]) => {
+        if (v === 0) return;
+        const el = document.createElement('div');
+        el.className = 'stat-float stat-float-' + names[k];
+        el.innerText = icons[k] + v;
+        el.style.left = (cx + offset) + 'px';
+        el.style.top = cy + 'px';
+        document.body.appendChild(el);
+        offset += 58;
+        setTimeout(() => el.remove(), 1500);
+    });
+}
+
+function pulseStat(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('pulse');
+    void el.offsetWidth; // reflow
+    el.classList.add('pulse');
+}
+
+// ===== 18岁红色腕带黑屏手表倒计时 =====
+let watchTimer = null;
+function playWatchCountdown(onComplete) {
+    const ov = document.getElementById('watch-overlay');
+    const digits = document.getElementById('watch-digits');
+    const msg = document.getElementById('watch-msg');
+    const skipBtn = document.getElementById('watch-skip');
+
+    ov.classList.add('show');
+    ov.classList.remove('watch-done');
+    msg.innerText = '';
+
+    let remain = 10.0;
+    digits.innerText = '00:10.0';
+
+    function fmt(t) {
+        const s = Math.floor(t);
+        const d = Math.floor((t % 1) * 10);
+        return (s < 10 ? '00:0' : '00:') + s + '.' + d;
+    }
+
+    function done() {
+        clearInterval(watchTimer);
+        digits.innerText = '00:00.0';
+        ov.classList.add('watch-done');
+        msg.innerText = '十 八 · 成 年 了';
+        setTimeout(() => {
+            ov.classList.remove('show');
+            ov.classList.remove('watch-done');
+            if (onComplete) onComplete();
+        }, 2400);
+    }
+
+    const skip = () => {
+        clearInterval(watchTimer);
+        ov.classList.remove('show');
+        ov.classList.remove('watch-done');
+        if (onComplete) onComplete();
+    };
+    skipBtn.onclick = skip;
+    ov.onclick = (e) => { if (e.target === ov) skip(); };
+
+    watchTimer = setInterval(() => {
+        remain -= 0.05;
+        if (remain <= 0) { done(); }
+        else digits.innerText = fmt(remain);
+    }, 50);
+}
+
+let typing = false, fullText = '', typeDone = null;
+const typeHint = document.getElementById('type-hint');
+
+function typeWriter(text, callback) {
+    textEl.innerHTML = '';
+    fullText = text;
+    typeDone = callback;
+    typing = true;
+    typeHint.classList.add('show');
+    let i = 0;
+    const speed = 45;
+
+    function type() {
+        if (i < text.length) {
+            textEl.innerHTML += text.charAt(i);
+            if (i % 3 === 0) playSound('type'); // 打字音效
+            i++;
+            typeWriterTimer = setTimeout(type, speed);
+        } else {
+            finishTyping();
+        }
+    }
+    type();
+}
+
+function finishTyping() {
+    if (!typing) return;
+    typing = false;
+    clearTimeout(typeWriterTimer);
+    textEl.innerText = fullText;
+    typeHint.classList.remove('show');
+    const cb = typeDone;
+    typeDone = null;
+    if (cb) cb();
+}
+
+// 点击文字立即显示全文（快进）
+textEl.style.cursor = 'pointer';
+textEl.addEventListener('click', () => { if (typing) finishTyping(); });
+
+function loadChapter(index) {
+    if (index >= storyScript.length) {
+        showEnding();
+        return;
+    }
+
+    const chapter = storyScript[index];
+    gameState.currentChapter = index;
+    titleEl.innerText = chapter.title;
+    choicesEl.innerHTML = '';
+
+    // 更新年龄映射（0-10章的年龄跨度）
+    const ageMap = [0, 1, 2, 8, 14, 16, 17, 17, 18, 18, 19];
+    gameState.age = ageMap[index] || 19;
+
+    updateStats();
+    document.getElementById('progress-fill').style.width = ((index + 1) / storyScript.length * 100) + '%';
+
+    // 章节配图（页内展示，点击可放大）
+    renderChapterPhoto(index);
+
+    clearTimeout(typeWriterTimer);
+    const startTyping = () => typeWriter(chapter.text, () => showChapterChoices(chapter, index));
+
+    // 18岁成年章：先播放红色腕带黑屏手表倒计时
+    if (index === 8 && !gameState.watchShown) {
+        gameState.watchShown = true;
+        playWatchCountdown(startTyping);
+    } else {
+        startTyping();
+    }
+}
+
+function showChapterChoices(chapter, index) {
+    if (chapter.choices) {
+        chapter.choices.forEach((choice, idx) => {
+            const btn = document.createElement('button');
+            btn.className = 'choice-btn fade-in';
+            btn.innerHTML = `<span class="choice-key">${idx + 1}</span>${choice.text}`;
+            btn.onclick = () => {
+                playSound('click');
+                gameState.stats.warm += choice.effect.warm;
+                gameState.stats.tough += choice.effect.tough;
+                gameState.stats.fans += choice.effect.fans;
+                updateStats();
+                spawnStatFloats(btn, choice.effect);
+                ['warm', 'tough', 'fans'].forEach(k => { if (choice.effect[k]) pulseStat('stat-' + k); });
+
+                choicesEl.innerHTML = '';
+                const replyDiv = document.createElement('div');
+                replyDiv.className = 'fade-in';
+                replyDiv.style.color = '#7faa7f';
+                replyDiv.style.marginTop = '15px';
+                replyDiv.style.paddingLeft = '10px';
+                replyDiv.style.borderLeft = '2px solid #4a634a';
+                replyDiv.innerText = `💬 ${choice.reply}`;
+                choicesEl.appendChild(replyDiv);
+
+                setTimeout(() => {
+                    loadChapter(index + 1);
+                }, 2800);
+            };
+            choicesEl.appendChild(btn);
+        });
+    } else {
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'choice-btn fade-in';
+        nextBtn.innerHTML = '▶ 继续... <span class="choice-key">⏎</span>';
+        nextBtn.style.textAlign = 'center';
+        nextBtn.onclick = () => {
+            playSound('click');
+            loadChapter(index + 1);
+        };
+        choicesEl.appendChild(nextBtn);
+    }
+}
+
+function showEnding() {
+    titleEl.innerText = "【尾声：听禹回响】";
+    document.getElementById('progress-fill').style.width = '100%';
+    document.getElementById('chapter-photo-wrap').innerHTML = '';
+    let endingText = "";
+    if (gameState.stats.tough >= 60) {
+        endingText = `18岁的大禹，带着坚韧值 ${gameState.stats.tough}，温暖值 ${gameState.stats.warm}，粉丝值 ${gameState.stats.fans}，继续前行。\n\n【结局：展翅高飞】\n那些被推掉的邀约、深夜的眼泪，最终都没能拦住他的脚步。大禹把所有的遗憾化为动力，在舞台上一次又一次证明了自己。未来的路还很长，但属于他的回响，才刚刚开始。`;
+    } else if (gameState.stats.warm >= 50) {
+        endingText = `18岁的大禹，带着温暖值 ${gameState.stats.warm}，坚韧值 ${gameState.stats.tough}，粉丝值 ${gameState.stats.fans}，继续前行。\n\n【结局：爱的羽翼】\n家人和粉丝的爱是他最坚硬的铠甲。那些说不出口的委屈、那些独自咽下的苦楚，都在那份沉甸甸的守护中变得不再沉重。无论前方如何，他都不是孤身一人。`;
+    } else {
+        endingText = `18岁的大禹，带着成长的一切，继续前行。\n\n【结局：凡人之路】\n也许没有惊天动地，但他依然在踏实地走着。经历过低谷，也见过微光。每一步，都作数。\n\n十九岁的他，还在向前。`;
+    }
+    
+    textEl.innerHTML = '';
+    typeWriter(endingText + "\n\n🎵 感谢游玩《听禹回响》，见证少年的成长。", null);
+    choicesEl.innerHTML = '';
+    const restartBtn = document.createElement('button');
+    restartBtn.className = 'choice-btn fade-in';
+    restartBtn.innerText = "🔄 重新开始";
+    restartBtn.style.textAlign = 'center';
+    restartBtn.onclick = () => { restartGame(); };
+    choicesEl.appendChild(restartBtn);
+}
+
+// 5. 存档/读档
+function saveGame() {
+    playSound('click');
+    const saveData = {
+        age: gameState.age,
+        stats: gameState.stats,
+        currentChapter: gameState.currentChapter
+    };
+    localStorage.setItem('tingyu_save_final', JSON.stringify(saveData));
+    alert("✅ 游戏进度已保存！");
+}
+
+function loadGame() {
+    playSound('click');
+    const saved = localStorage.getItem('tingyu_save_final');
+    if (saved) {
+        const data = JSON.parse(saved);
+        gameState.age = data.age;
+        gameState.stats = data.stats;
+        updateStats();
+        loadChapter(data.currentChapter);
+        alert("📂 存档读取成功！");
+    } else {
+        alert("❌ 没有找到存档记录。");
+    }
+}
+
+function restartGame() {
+    playSound('click');
+    gameState.age = 0;
+    gameState.stats = { warm: 0, tough: 0, fans: 0 };
+    gameState.currentChapter = 0;
+    updateStats();
+    loadChapter(0);
+}
+
+// ===== 成长相册（图片按年龄从小到大排列） =====
+const galleryPhotos = [
+    { src: "Screenshot_20261003_121038.jpg", w: 1080, h: 813,  kb: 372, tag: "小小书童", age: 1 },
+    { src: "Screenshot_20261003_120639.jpg", w: 1080, h: 911,  kb: 292, tag: "伸手抱世界", age: 2 },
+    { src: "Screenshot_20261003_121055.jpg", w: 1080, h: 1411, kb: 366, tag: "白衣少年", age: 14 },
+    { src: "Screenshot_20261003_122222.jpg", w: 1080, h: 1376, kb: 906, tag: "气球与王冠", age: 18 },
+    { src: "Screenshot_20261003_122014.jpg", w: 1080, h: 1517, kb: 952, tag: "捧花而立", age: 19 }
+];
+
+let galleryRendered = false;
+function renderGallery() {
+    const grid = document.getElementById('gallery-grid');
+    grid.innerHTML = '';
+    galleryPhotos
+        .slice()
+        .sort((a, b) => a.age - b.age) // 按年龄从小到大
+        .forEach((p, i, arr) => {
+            const card = document.createElement('div');
+            card.className = 'photo-card fade-in';
+            const rankText = i === 0 ? `${p.age}岁 · 最小`
+                           : i === arr.length - 1 ? `${p.age}岁 · 最大`
+                           : `${p.age}岁`;
+            card.innerHTML = `
+                <div class="photo-wrap">
+                    <img src="${p.src}" alt="${p.tag}" loading="lazy">
+                    <span class="photo-rank">${rankText}</span>
+                </div>
+                <div class="photo-info">
+                    <span class="photo-tag">${p.tag}</span>
+                    <span>${p.age}岁 · ${p.w}×${p.h}</span>
+                </div>`;
+            card.querySelector('img').onclick = () => showLightbox(p.src, p.tag);
+            grid.appendChild(card);
+        });
+}
+
+function openGallery() {
+    playSound('click');
+    if (!galleryRendered) {
+        renderGallery();
+        galleryRendered = true;
+    }
+    document.getElementById('gallery-overlay').classList.add('show');
+}
+
+function closeGallery() {
+    document.getElementById('gallery-overlay').classList.remove('show');
+}
+
+function showLightbox(src, tag) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox-caption').innerText = tag;
+    document.getElementById('lightbox').classList.add('show');
+}
+
+// ===== 开场动画与初始化 =====
+window.onload = () => {
+    let started = false;
+    const startGame = () => {
+        if (started) return;
+        started = true;
+        document.getElementById('intro-overlay').classList.add('hidden');
+        document.getElementById('game-container').classList.add('active');
+        restartGame(); // 开始游戏
+    };
+    // 6秒后自动进入，或点击跳过
+    setTimeout(startGame, 6000);
+    document.getElementById('intro-overlay').addEventListener('click', startGame);
+
+    // 浏览器自动播放策略：首次交互（点击音乐按钮除外）时自动响起 BGM
+    document.addEventListener('pointerdown', (e) => {
+        if (e.target.closest && e.target.closest('#music-toggle')) return;
+        startBGM();
+    }, { once: true });
+
+    // ESC 关闭相册 / 大图 / 跳过手表
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.getElementById('lightbox').classList.remove('show');
+            closeGallery();
+            const ov = document.getElementById('watch-overlay');
+            if (ov.classList.contains('show')) {
+                const skipBtn = document.getElementById('watch-skip');
+                if (skipBtn) skipBtn.click();
+            }
+        }
+    });
+};
+</script>
+</body>
+</html>
